@@ -4,7 +4,7 @@
  */
 
 // Get the API base URL from environment variable or use relative path
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/hrs-v2/server/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/hrs-v3/server/api'
 
 // Ensure the URL ends with a slash
 const normalizedBaseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`
@@ -42,6 +42,7 @@ export const API_ENDPOINTS = {
     DIOS_CONTROL: getApiUrl('dios_control.php'),
     MODULE_PERMISSIONS: getApiUrl('module_permissions.php'),
     PAYROLL: getApiUrl('payroll.php'),
+    PRC_LICENSES: getApiUrl('prc_licenses.php'),
 }
 
 export default {

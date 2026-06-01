@@ -29,7 +29,8 @@ export function createAuthFetch() {
 }
 
 // API client for making requests
-const API_BASE = import.meta.env.VITE_API_BASE_URL
+import apiConfig from '@/config/api'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || apiConfig.BASE_URL
 
 function getUserId() {
     const userStr = sessionStorage.getItem('hris_user')

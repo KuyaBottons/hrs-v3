@@ -3,10 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useEmployeeStore } from '@/stores/employees'
 import { usePermissions } from '@/composables/usePermissions'
 import AppSelect from '@/components/AppSelect.vue'
+import { API_ENDPOINTS } from '@/config/api'
 
 const empStore = useEmployeeStore()
 const { hasPermission, loadPermissions } = usePermissions()
-const API = `${import.meta.env.VITE_API_BASE_URL}/prc_licenses.php`
+const API = API_ENDPOINTS.PRC_LICENSES
 
 onMounted(async () => {
   await loadPermissions()

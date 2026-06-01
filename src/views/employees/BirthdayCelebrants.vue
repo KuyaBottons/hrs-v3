@@ -1,8 +1,9 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import AppSelect from '@/components/AppSelect.vue'
+import { API_ENDPOINTS } from '@/config/api'
 
-const API = `${import.meta.env.VITE_API_BASE_URL}/birthday_celebrants.php`
+const API = API_ENDPOINTS.BIRTHDAY_CELEBRANTS
 
 const filterMonth = ref(new Date().getMonth() + 1)
 const calendarView = ref('month')
@@ -59,7 +60,7 @@ async function fetchCelebrants() {
 
 async function fetchDepartments() {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/employees.php?departments=1`)
+    const res = await fetch(`${API_ENDPOINTS.EMPLOYEES}?departments=1`)
     const data = await res.json()
     departments.value = data.departments ?? []
   } catch (e) {

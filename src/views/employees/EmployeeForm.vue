@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useEmployeeStore } from '@/stores/employees'
 import { useAuthStore } from '@/stores/auth'
+import { API_ENDPOINTS } from '@/config/api'
 
 const router = useRouter()
 const route  = useRoute()
@@ -64,7 +65,7 @@ onMounted(async () => {
     loadingForm.value = true
     try {
       // Fetch directly from API to guarantee fresh data regardless of store state
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/employees.php?id=${route.params.id}`)
+      const res = await fetch(`${API_ENDPOINTS.EMPLOYEES}?id=${route.params.id}`)
       if (!res.ok) throw new Error('Failed to load employee')
       const r = await res.json()
       Object.assign(form.value, {

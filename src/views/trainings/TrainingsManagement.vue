@@ -3,10 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useEmployeeStore } from '@/stores/employees'
 import { usePermissions } from '@/composables/usePermissions'
 import { printTrainings, printTrainingAttendees, printCertificate, printAllCertificates } from '@/utils/print'
+import { API_ENDPOINTS } from '@/config/api'
 
 const empStore = useEmployeeStore()
 const { hasPermission, loadPermissions } = usePermissions()
-const API = `${import.meta.env.VITE_API_BASE_URL}/trainings.php`
+const API = API_ENDPOINTS.TRAININGS
 
 // ── State ────────────────────────────────────────────────────────────────────
 const trainings    = ref([])

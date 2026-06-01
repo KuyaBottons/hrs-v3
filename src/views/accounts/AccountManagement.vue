@@ -47,7 +47,7 @@ const modulePermissions = ref({})
 
 async function loadModulePermissions() {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/module_permissions.php`)
+    const res = await fetch(`${API_ENDPOINTS.MODULE_PERMISSIONS}`)
     const data = await res.json()
     modulePermissions.value = data.permissions || {}
   } catch (e) {

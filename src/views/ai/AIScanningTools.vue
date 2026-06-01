@@ -2,8 +2,9 @@
 import { ref, onMounted } from "vue";
 import { usePermissions } from "@/composables/usePermissions";
 import { useNotificationStore } from "@/stores/notifications";
+import { API_ENDPOINTS } from "@/config/api";
 
-const API = `${import.meta.env.VITE_API_BASE_URL}/ai_scan.php`;
+const API = API_ENDPOINTS.AI_SCAN;
 const SAVE_API = API + "?action=save";
 const { hasPermission, loadPermissions } = usePermissions();
 const notificationStore = useNotificationStore();

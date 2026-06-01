@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { API_ENDPOINTS } from '@/config/api'
 
-const PERM_API = `${import.meta.env.VITE_API_BASE_URL}/module_permissions.php`
+const PERM_API = API_ENDPOINTS.MODULE_PERMISSIONS
 
 // Global permissions cache
 const permissionsCache = ref(null)

@@ -59,8 +59,8 @@ function checkPermission($conn, $userId, $module, $action) {
     // Retrieve user role
     $role = getUserRole($conn, $userId);
 
-    // Deny if role cannot be determined
-    if (!$role) {
+    // Deny if role cannot be determined or is empty
+    if ($role === null || $role === '') {
         return false;
     }
 

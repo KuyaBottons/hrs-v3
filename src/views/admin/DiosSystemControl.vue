@@ -3,8 +3,9 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import AppSelect from '@/components/AppSelect.vue'
+import { API_ENDPOINTS } from '@/config/api'
 
-const API = `${import.meta.env.VITE_API_BASE_URL}/dios_control.php`
+const API = API_ENDPOINTS.DIOS_CONTROL
 
 const auth   = useAuthStore()
 const router = useRouter()
@@ -238,7 +239,7 @@ function buildDefaultPerms() {
   return perms
 }
 
-const PERM_API = `${import.meta.env.VITE_API_BASE_URL}/module_permissions.php`
+const PERM_API = API_ENDPOINTS.MODULE_PERMISSIONS
 
 async function loadPermsFromDB() {
   try {

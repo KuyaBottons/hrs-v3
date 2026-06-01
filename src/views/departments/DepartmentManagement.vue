@@ -2,8 +2,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useEmployeeStore } from '@/stores/employees'
 import { usePermissions } from '@/composables/usePermissions'
+import { API_ENDPOINTS } from '@/config/api'
 
-const API      = `${import.meta.env.VITE_API_BASE_URL}/departments.php`
+const API      = API_ENDPOINTS.DEPARTMENTS
 const empStore = useEmployeeStore()
 const { hasPermission, loadPermissions } = usePermissions()
 
