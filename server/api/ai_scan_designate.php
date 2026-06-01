@@ -4,8 +4,8 @@
  * Handles automatic data mapping and saving to designated modules
  * Supports: Employee Masterlist, Birthday Celebrants, Schedule Database
  */
-
 require_once 'db.php';
+require_once 'cors.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $conn   = getConnection();

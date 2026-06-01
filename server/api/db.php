@@ -59,8 +59,8 @@ function checkPermission($conn, $userId, $module, $action) {
     // Retrieve user role
     $role = getUserRole($conn, $userId);
 
-    // Deny if role cannot be determined or is empty
-    if ($role === null || $role === '') {
+    // Deny if role cannot be determined
+    if (!$role) {
         return false;
     }
 
@@ -110,11 +110,4 @@ function denyAccess($module, $action) {
     exit;
 }
 
-// CORS headers (adjust origin for production)
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-User-Id, X-User-ID');
-if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit;
-}
+// CORS headers are handled by cors.php - do not set here to avoid duplicates

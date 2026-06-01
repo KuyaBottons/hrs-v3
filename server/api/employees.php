@@ -1,5 +1,6 @@
 <?php
 require_once 'db.php';
+require_once 'cors.php';
 require_once 'notification_helpers.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -36,11 +37,36 @@ switch ($method) {
             $depts = array_column($rows, 'department');
             sendJson(['departments' => $depts]);
         } else {
-            $result = $conn->query('SELECT e.*, 
-                (SELECT COUNT(*) FROM prc_licenses pl WHERE pl.employee_id = e.id AND pl.expiry_date >= CURDATE()) as has_prc_license,
-                (SELECT GROUP_CONCAT(CONCAT(pl.license_number, " (", pl.expiry_date, ")") SEPARATOR "; ") FROM prc_licenses pl WHERE pl.employee_id = e.id) as prc_license_info
-                FROM employees e ORDER BY last_name, first_name');
-            $rows   = $result->fetch_all(MYSQLI_ASSOC);
+            // Get user role and department for scoping
+            $userStmt = $conn->prepare('SELECT role, department FROM users WHERE id = ?');
+            $userStmt->bind_param('i', $userId);
+            $userStmt->execute();
+            $userInfo = $userStmt->get_result()->fetch_assoc();
+            $userRole = $userInfo['role'] ?? '';
+            $userDept = ($userInfo['department'] ?? '') ?: null;
+
+            // Admin and Section Admin: restrict to their own department
+            $restrictByDept = (($userRole === 'Admin' || $userRole === 'Section Admin') && $userDept !== null);
+
+            if ($restrictByDept) {
+                $result = $conn->prepare(
+                    'SELECT e.*,
+                     (SELECT COUNT(*) FROM prc_licenses pl WHERE pl.employee_id = e.id AND pl.expiry_date >= CURDATE()) as has_prc_license,
+                     (SELECT GROUP_CONCAT(CONCAT(pl.license_number, " (", pl.expiry_date, ")") SEPARATOR "; ") FROM prc_licenses pl WHERE pl.employee_id = e.id) as prc_license_info
+                     FROM employees e WHERE e.department = ? ORDER BY e.last_name, e.first_name'
+                );
+                $result->bind_param('s', $userDept);
+                $result->execute();
+                $rows = $result->get_result()->fetch_all(MYSQLI_ASSOC);
+            } else {
+                $result = $conn->query(
+                    'SELECT e.*,
+                     (SELECT COUNT(*) FROM prc_licenses pl WHERE pl.employee_id = e.id AND pl.expiry_date >= CURDATE()) as has_prc_license,
+                     (SELECT GROUP_CONCAT(CONCAT(pl.license_number, " (", pl.expiry_date, ")") SEPARATOR "; ") FROM prc_licenses pl WHERE pl.employee_id = e.id) as prc_license_info
+                     FROM employees e ORDER BY e.last_name, e.first_name'
+                );
+                $rows = $result->fetch_all(MYSQLI_ASSOC);
+            }
             sendJson($rows);
         }
         break;

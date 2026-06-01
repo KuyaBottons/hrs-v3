@@ -1,5 +1,8 @@
 <?php
+error_reporting(0);
+ini_set('display_errors', 0);
 require_once 'db.php';
+require_once 'cors.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $conn   = getConnection();
@@ -64,14 +67,22 @@ switch ($method) {
         if (!$doc_type) sendError('Document type is required');
 
         // Add columns if they don't exist yet (safe migration)
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `direction` ENUM('incoming','outgoing') NOT NULL DEFAULT 'incoming'");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `route` VARCHAR(255) DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `linked_outgoing_id` INT DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancelled` TINYINT(1) DEFAULT 0");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancel_reason` TEXT DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancel_pulled_by` VARCHAR(255) DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancel_care_off` VARCHAR(255) DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `classification` VARCHAR(50) DEFAULT 'Specific'");
+        $columns = [
+            'direction' => "ALTER TABLE document_tracking ADD COLUMN `direction` ENUM('incoming','outgoing') NOT NULL DEFAULT 'incoming'",
+            'route' => "ALTER TABLE document_tracking ADD COLUMN `route` VARCHAR(255) DEFAULT NULL",
+            'linked_outgoing_id' => "ALTER TABLE document_tracking ADD COLUMN `linked_outgoing_id` INT DEFAULT NULL",
+            'cancelled' => "ALTER TABLE document_tracking ADD COLUMN `cancelled` TINYINT(1) DEFAULT 0",
+            'cancel_reason' => "ALTER TABLE document_tracking ADD COLUMN `cancel_reason` TEXT DEFAULT NULL",
+            'cancel_pulled_by' => "ALTER TABLE document_tracking ADD COLUMN `cancel_pulled_by` VARCHAR(255) DEFAULT NULL",
+            'cancel_care_off' => "ALTER TABLE document_tracking ADD COLUMN `cancel_care_off` VARCHAR(255) DEFAULT NULL",
+            'classification' => "ALTER TABLE document_tracking ADD COLUMN `classification` VARCHAR(50) DEFAULT 'Specific'"
+        ];
+        foreach ($columns as $col => $sql) {
+            $result = @$conn->query("SHOW COLUMNS FROM document_tracking LIKE '$col'");
+            if ($result && $result->num_rows == 0) {
+                @$conn->query($sql);
+            }
+        }
 
         $stmt = $conn->prepare(
             'INSERT INTO document_tracking
@@ -80,7 +91,7 @@ switch ($method) {
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
         );
         $stmt->bind_param(
-            'ssssssssssis',
+            'sssssssssssis',
             $doc_type, $doc_no, $from_office, $to_office, $route, $direction,
             $date_forwarded, $date_received, $received_by, $status, $remarks, $linked_outgoing_id, $classification
         );
@@ -131,27 +142,56 @@ switch ($method) {
         $classification = trim($data['classification'] ?? 'Specific');
 
         // Add columns if they don't exist yet (safe migration)
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `direction` ENUM('incoming','outgoing') NOT NULL DEFAULT 'incoming'");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `route` VARCHAR(255) DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `linked_outgoing_id` INT DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancelled` TINYINT(1) DEFAULT 0");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancel_reason` TEXT DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancel_pulled_by` VARCHAR(255) DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `cancel_care_off` VARCHAR(255) DEFAULT NULL");
-        $conn->query("ALTER TABLE document_tracking ADD COLUMN IF NOT EXISTS `classification` VARCHAR(50) DEFAULT 'Specific'");
+        $columns = [
+            'direction' => "ALTER TABLE document_tracking ADD COLUMN `direction` ENUM('incoming','outgoing') NOT NULL DEFAULT 'incoming'",
+            'route' => "ALTER TABLE document_tracking ADD COLUMN `route` VARCHAR(255) DEFAULT NULL",
+            'linked_outgoing_id' => "ALTER TABLE document_tracking ADD COLUMN `linked_outgoing_id` INT DEFAULT NULL",
+            'cancelled' => "ALTER TABLE document_tracking ADD COLUMN `cancelled` TINYINT(1) DEFAULT 0",
+            'cancel_reason' => "ALTER TABLE document_tracking ADD COLUMN `cancel_reason` TEXT DEFAULT NULL",
+            'cancel_pulled_by' => "ALTER TABLE document_tracking ADD COLUMN `cancel_pulled_by` VARCHAR(255) DEFAULT NULL",
+            'cancel_care_off' => "ALTER TABLE document_tracking ADD COLUMN `cancel_care_off` VARCHAR(255) DEFAULT NULL",
+            'classification' => "ALTER TABLE document_tracking ADD COLUMN `classification` VARCHAR(50) DEFAULT 'Specific'"
+        ];
+        foreach ($columns as $col => $sql) {
+            $result = @$conn->query("SHOW COLUMNS FROM document_tracking LIKE '$col'");
+            if ($result && $result->num_rows == 0) {
+                @$conn->query($sql);
+            }
+        }
 
-        $stmt = $conn->prepare(
-            'UPDATE document_tracking SET
-             doc_type=?, doc_no=?, from_office=?, to_office=?, route=?, direction=?,
-             date_forwarded=?, date_received=?, received_by=?, status=?, remarks=?, linked_outgoing_id=?, classification=?
-             WHERE id=?'
-        );
-        $stmt->bind_param(
-            'ssssssssssis',
-            $doc_type, $doc_no, $from_office, $to_office, $route, $direction,
-            $date_forwarded, $date_received, $received_by, $status, $remarks, $linked_outgoing_id, $classification,
-            $id
-        );
+        // Build dynamic UPDATE query to handle NULL values
+        $updateFields = [];
+        $updateValues = [];
+        $types = '';
+
+        $fields = [
+            'doc_type' => ['value' => $doc_type, 'type' => 's'],
+            'doc_no' => ['value' => $doc_no, 'type' => 's'],
+            'from_office' => ['value' => $from_office, 'type' => 's'],
+            'to_office' => ['value' => $to_office, 'type' => 's'],
+            'route' => ['value' => $route, 'type' => 's'],
+            'direction' => ['value' => $direction, 'type' => 's'],
+            'date_forwarded' => ['value' => $date_forwarded, 'type' => 's'],
+            'date_received' => ['value' => $date_received, 'type' => 's'],
+            'received_by' => ['value' => $received_by, 'type' => 's'],
+            'status' => ['value' => $status, 'type' => 's'],
+            'remarks' => ['value' => $remarks, 'type' => 's'],
+            'linked_outgoing_id' => ['value' => $linked_outgoing_id, 'type' => 'i'],
+            'classification' => ['value' => $classification, 'type' => 's'],
+        ];
+
+        foreach ($fields as $field => $info) {
+            $updateFields[] = "$field = ?";
+            $updateValues[] = $info['value'];
+            $types .= $info['type'];
+        }
+
+        $sql = 'UPDATE document_tracking SET ' . implode(', ', $updateFields) . ' WHERE id = ?';
+        $updateValues[] = $id;
+        $types .= 'i';
+
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$updateValues);
 
         if (!$stmt->execute()) sendError('Update failed: ' . $stmt->error, 500);
         sendJson(['message' => 'Tracking record updated']);

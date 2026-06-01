@@ -1,5 +1,6 @@
 <?php
 require_once 'db.php';
+require_once 'cors.php';
 require_once 'notification_helpers.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -33,31 +34,32 @@ switch ($method) {
         $userStmt->bind_param('i', $userId);
         $userStmt->execute();
         $userInfo = $userStmt->get_result()->fetch_assoc();
-        $userRole = $userInfo['role'] ?? 'Admin';
-        $userDept = $userInfo['department'] ?? null;
-        
+        $userRole = $userInfo['role'] ?? '';
+        $userDept = ($userInfo['department'] ?? '') ?: null;
+
+        // Only restrict by department for Admin or Section Admin role with a known department
+        $restrictByDept = (($userRole === 'Admin' || $userRole === 'Section Admin') && $userDept !== null);
+
         if (isset($_GET['id'])) {
-            $id   = (int) $_GET['id'];
-            
-            // For Admin users, check if schedule belongs to their department
-            if ($userRole === 'Admin' && $userDept) {
+            $id = (int) $_GET['id'];
+
+            if ($restrictByDept) {
                 $stmt = $conn->prepare('SELECT * FROM schedules WHERE id = ? AND department = ?');
                 $stmt->bind_param('is', $id, $userDept);
             } else {
                 $stmt = $conn->prepare('SELECT * FROM schedules WHERE id = ?');
                 $stmt->bind_param('i', $id);
             }
-            
+
             $stmt->execute();
             $row = $stmt->get_result()->fetch_assoc();
             if (!$row) sendError('Schedule not found', 404);
             $row['days'] = json_decode($row['days'] ?? '[]');
             sendJson($row);
         } elseif (isset($_GET['emp'])) {
-            $emp  = $_GET['emp'];
-            
-            // For Admin users, filter by department
-            if ($userRole === 'Admin' && $userDept) {
+            $emp = $_GET['emp'];
+
+            if ($restrictByDept) {
                 $stmt = $conn->prepare(
                     'SELECT * FROM schedules WHERE employee_no = ? AND department = ? ORDER BY schedule_date DESC, effective_date DESC'
                 );
@@ -68,19 +70,18 @@ switch ($method) {
                 );
                 $stmt->bind_param('s', $emp);
             }
-            
+
             $stmt->execute();
             $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             foreach ($rows as &$r) $r['days'] = json_decode($r['days'] ?? '[]');
             sendJson($rows);
         } elseif (isset($_GET['dept'])) {
             $dept = $_GET['dept'];
-            
-            // For Admin users, only allow their own department
-            if ($userRole === 'Admin' && $userDept && $dept !== $userDept) {
+
+            if ($restrictByDept && $dept !== $userDept) {
                 sendError('Access denied: You can only view schedules from your department', 403);
             }
-            
+
             $stmt = $conn->prepare(
                 'SELECT * FROM schedules WHERE department = ? ORDER BY employee_name, schedule_date DESC'
             );
@@ -91,9 +92,8 @@ switch ($method) {
             sendJson($rows);
         } elseif (isset($_GET['date'])) {
             $date = $_GET['date'];
-            
-            // For Admin users, filter by department
-            if ($userRole === 'Admin' && $userDept) {
+
+            if ($restrictByDept) {
                 $stmt = $conn->prepare(
                     'SELECT * FROM schedules WHERE schedule_date = ? AND department = ? ORDER BY employee_name'
                 );
@@ -104,14 +104,14 @@ switch ($method) {
                 );
                 $stmt->bind_param('s', $date);
             }
-            
+
             $stmt->execute();
             $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             foreach ($rows as &$r) $r['days'] = json_decode($r['days'] ?? '[]');
             sendJson($rows);
         } else {
-            // For Admin users, only show schedules from their department
-            if ($userRole === 'Admin' && $userDept) {
+            // No filter — return all or department-scoped
+            if ($restrictByDept) {
                 $stmt = $conn->prepare(
                     'SELECT * FROM schedules WHERE department = ? ORDER BY employee_name, schedule_date DESC, effective_date DESC'
                 );
@@ -119,13 +119,13 @@ switch ($method) {
                 $stmt->execute();
                 $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             } else {
-                // Super Admin sees all schedules
+                // Super Admin / DIOS / Section Admin / unknown — see all schedules
                 $result = $conn->query(
                     'SELECT * FROM schedules ORDER BY employee_name, schedule_date DESC, effective_date DESC'
                 );
                 $rows = $result->fetch_all(MYSQLI_ASSOC);
             }
-            
+
             foreach ($rows as &$r) $r['days'] = json_decode($r['days'] ?? '[]');
             sendJson($rows);
         }
@@ -138,8 +138,9 @@ switch ($method) {
         $userStmt->bind_param('i', $userId);
         $userStmt->execute();
         $userInfo = $userStmt->get_result()->fetch_assoc();
-        $userRole = $userInfo['role'] ?? 'Admin';
-        $userDept = $userInfo['department'] ?? null;
+        $userRole = $userInfo['role'] ?? '';
+        $userDept = ($userInfo['department'] ?? '') ?: null;
+        $restrictByDept = ($userRole === 'Admin' || $userRole === 'Section Admin') && $userDept !== null;
         
         $data = json_decode(file_get_contents('php://input'), true);
         if (!$data) sendError('Invalid JSON body');
@@ -150,7 +151,7 @@ switch ($method) {
         $department    = $data['department']           ?? '';
         
         // For Admin users, only allow creating schedules for their department
-        if ($userRole === 'Admin' && $userDept && $department !== $userDept) {
+        if ($restrictByDept && $department !== $userDept) {
             sendError('Access denied: You can only create schedules for your department', 403);
         }
         
@@ -307,15 +308,16 @@ switch ($method) {
         $userStmt->bind_param('i', $userId);
         $userStmt->execute();
         $userInfo = $userStmt->get_result()->fetch_assoc();
-        $userRole = $userInfo['role'] ?? 'Admin';
-        $userDept = $userInfo['department'] ?? null;
-        
+        $userRole = $userInfo['role'] ?? '';
+        $userDept = ($userInfo['department'] ?? '') ?: null;
+        $restrictByDept = ($userRole === 'Admin' || $userRole === 'Section Admin') && $userDept !== null;
+
         $id   = (int) ($_GET['id'] ?? 0);
         $data = json_decode(file_get_contents('php://input'), true);
         if (!$id || !$data) sendError('Invalid request');
-        
+
         // Check if schedule exists and belongs to user's department (for Admin)
-        if ($userRole === 'Admin' && $userDept) {
+        if ($restrictByDept) {
             $checkStmt = $conn->prepare('SELECT department FROM schedules WHERE id = ?');
             $checkStmt->bind_param('i', $id);
             $checkStmt->execute();
@@ -336,7 +338,7 @@ switch ($method) {
         $department    = $data['department']           ?? '';
         
         // For Admin users, prevent changing department to another department
-        if ($userRole === 'Admin' && $userDept && $department !== $userDept) {
+        if ($restrictByDept && $department !== $userDept) {
             sendError('Access denied: You cannot change schedule to another department', 403);
         }
         
@@ -421,14 +423,15 @@ switch ($method) {
         $userStmt->bind_param('i', $userId);
         $userStmt->execute();
         $userInfo = $userStmt->get_result()->fetch_assoc();
-        $userRole = $userInfo['role'] ?? 'Admin';
-        $userDept = $userInfo['department'] ?? null;
-        
+        $userRole = $userInfo['role'] ?? '';
+        $userDept = ($userInfo['department'] ?? '') ?: null;
+        $restrictByDept = ($userRole === 'Admin' || $userRole === 'Section Admin') && $userDept !== null;
+
         $id = (int) ($_GET['id'] ?? 0);
         if (!$id) sendError('ID required');
-        
+
         // Check if schedule exists and belongs to user's department (for Admin)
-        if ($userRole === 'Admin' && $userDept) {
+        if ($restrictByDept) {
             $checkStmt = $conn->prepare('SELECT department FROM schedules WHERE id = ?');
             $checkStmt->bind_param('i', $id);
             $checkStmt->execute();

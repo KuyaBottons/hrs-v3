@@ -13,9 +13,7 @@ require_once 'db.php';
 ob_clean();
 
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+// CORS headers are handled by cors.php - do not set here to avoid duplicates
 
 $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'OPTIONS') { http_response_code(200); exit; }

@@ -4,10 +4,8 @@
  */
 ini_set('display_errors', 0);
 error_reporting(0);
-ob_start();
-require_once 'db.php';
 require_once 'cors.php';
-ob_clean();
+require_once 'db.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $conn   = getConnection();
@@ -21,26 +19,20 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         if (!$data) sendError('Invalid JSON body');
 
-        $username = trim($data['username'] ?? '');
+        $biometricsNumber = trim($data['biometrics_number'] ?? '');
         $password = trim($data['password'] ?? '');
-        if (!$username || !$password) sendError('Username/biometrics number and password required');
+        if (!$biometricsNumber || !$password) sendError('Biometrics number and password required');
 
-        // Validate username/biometrics number - maximum 4 numeric digits for biometrics, or alphanumeric username
-        // Allow: 1-4 digit biometrics numbers OR standard usernames with common characters (letters, numbers, @, ., -, _) (up to 50 chars)
-        if (!preg_match('/^[A-Za-z0-9@._\- ]{1,50}$/', $username)) {
-            sendError('Username/biometrics number must be alphanumeric characters only');
+        // Validate biometrics number - must be 1-4 digits
+        if (!preg_match('/^\d{1,4}$/', $biometricsNumber)) {
+            sendError('Biometrics number must be 1-4 digits');
         }
-        // If it looks like a biometrics number (all digits), enforce 4-digit max
-        if (preg_match('/^\d+$/', $username) && strlen($username) > 4) {
-            sendError('Biometrics number must be maximum 4 digits');
-        }
-
 
         $stmt = $conn->prepare(
-            'SELECT id, username, name, role, department, position
-             FROM users WHERE (username = ? OR biometrics_number = ?) AND password = SHA2(?, 256) AND active = 1'
+            'SELECT id, biometrics_number, name, role, department, position
+             FROM users WHERE biometrics_number = ? AND password = SHA2(?, 256) AND active = 1'
         );
-        $stmt->bind_param('sss', $username, $username, $password);
+        $stmt->bind_param('ss', $biometricsNumber, $password);
         $stmt->execute();
         $user = $stmt->get_result()->fetch_assoc();
 
@@ -60,7 +52,7 @@ switch ($action) {
 
             sendJson(['user' => $user, 'message' => 'Login successful']);
         } else {
-            sendError('Invalid username or password.', 401);
+            sendError('Invalid biometrics number or password.', 401);
         }
         break;
 
@@ -76,17 +68,17 @@ switch ($action) {
             denyAccess('Account Management', 'Add');
         }
 
-        $username = trim($data['username'] ?? '');
-        $password = trim($data['password'] ?? '');
-        $name     = trim($data['name']     ?? '');
-        $role     = trim($data['role']     ?? 'Admin');
-        $dept     = trim($data['department'] ?? 'Human Resources');
-        $position = trim($data['position'] ?? '');
+        $username         = trim($data['username']         ?? '');
+        $biometricsNumber = trim($data['password']          ?? ''); // password field = biometrics number
+        $name             = trim($data['name']              ?? '');
+        $role             = trim($data['role']              ?? 'Admin');
+        $dept             = trim($data['department']        ?? 'Human Resources');
+        $position         = trim($data['position']          ?? '');
 
-        if (!$username || !$password || !$name) sendError('Username, password, and name are required');
-        if (strlen($password) < 6) sendError('Password must be at least 6 characters');
+        if (!$username || !$biometricsNumber || !$name) sendError('Username, biometrics number, and name are required');
+        if (!preg_match('/^\d{1,4}$/', $biometricsNumber)) sendError('Biometrics number must be 1–4 digits only');
 
-        $allowed_roles = ['DIOS', 'Super Admin', 'Admin', 'User', 'Section Admin', 'Client'];
+        $allowed_roles = ['Super Admin', 'Admin', 'DIOS', 'Section Admin', 'IT'];
         if (!in_array($role, $allowed_roles)) sendError('Invalid role');
 
         // Check duplicate username (case-insensitive)
@@ -99,26 +91,36 @@ switch ($action) {
         }
         $chk->close();
 
+        // Check duplicate biometrics number
+        $chk2 = $conn->prepare('SELECT id FROM users WHERE biometrics_number = ?');
+        $chk2->bind_param('s', $biometricsNumber);
+        $chk2->execute();
+        if ($chk2->get_result()->num_rows > 0) {
+            $chk2->close();
+            sendError('Biometrics number already in use.', 409);
+        }
+        $chk2->close();
+
         // Use transaction to prevent race conditions
         $conn->begin_transaction();
-        
+
         try {
             $stmt = $conn->prepare(
-                'INSERT INTO users (username, password, name, role, department, position)
-                 VALUES (?, SHA2(?, 256), ?, ?, ?, ?)'
+                'INSERT INTO users (username, biometrics_number, password, name, role, department, position)
+                 VALUES (?, ?, SHA2(?, 256), ?, ?, ?, ?)'
             );
-            $stmt->bind_param('ssssss', $username, $password, $name, $role, $dept, $position);
-            
+            $stmt->bind_param('sssssss', $username, $biometricsNumber, $biometricsNumber, $name, $role, $dept, $position);
+
             if (!$stmt->execute()) {
                 throw new Exception('Failed to create account: ' . $stmt->error);
             }
-            
+
             $insertId = $conn->insert_id;
             $stmt->close();
-            
+
             $conn->commit();
             sendJson(['id' => $insertId, 'message' => 'Account created'], 201);
-            
+
         } catch (Exception $e) {
             $conn->rollback();
             sendError($e->getMessage(), 500);
@@ -128,16 +130,21 @@ switch ($action) {
     // GET /auth.php?action=users
     case 'users':
         if ($method !== 'GET') sendError('GET required', 405);
-        
+
         // Check permission for Account Management module
         $userId = (int)($_SERVER['HTTP_X_USER_ID'] ?? 0);
         if (!checkPermission($conn, $userId, 'Account Management', 'View')) {
             denyAccess('Account Management', 'View');
         }
-        
+
         $rows = $conn->query(
-            'SELECT id, username, name, role, department, position, active, created_at FROM users ORDER BY id'
+            'SELECT id, username, biometrics_number, name, role, department, position, active, created_at FROM users ORDER BY name'
         )->fetch_all(MYSQLI_ASSOC);
+        // Mark whether biometrics is set but still expose the value for Account Management
+        foreach ($rows as &$row) {
+            $row['has_biometrics'] = !empty($row['biometrics_number']);
+            // biometrics_number is exposed — only DIOS/Admin can reach this endpoint
+        }
         sendJson(['users' => $rows]);
         break;
 
@@ -154,14 +161,55 @@ switch ($action) {
             denyAccess('Account Management', 'Edit');
         }
 
-        $name = trim($data['name']       ?? '');
-        $role = trim($data['role']       ?? '');
+        $name = trim($data['name'] ?? '');
+        $biometricsNumber = trim($data['biometrics_number'] ?? '');
+        $role = trim($data['role'] ?? '');
         $dept = trim($data['department'] ?? '');
         $position = trim($data['position'] ?? '');
-        if (!$name) sendError('Name is required');
+        $avatar = trim($data['avatar'] ?? '');
 
-        $stmt = $conn->prepare('UPDATE users SET name=?, role=?, department=?, position=? WHERE id=?');
-        $stmt->bind_param('ssssi', $name, $role, $dept, $position, $id);
+        if (!$name) sendError('Name is required');
+        if ($biometricsNumber && !preg_match('/^\d{1,4}$/', $biometricsNumber)) {
+            sendError('Biometrics number must be 1-4 digits');
+        }
+
+        // Build dynamic update query based on provided fields
+        $updateFields = ['name = ?'];
+        $params = [$name];
+        $types = 's';
+
+        if ($biometricsNumber) {
+            $updateFields[] = 'biometrics_number = ?';
+            $params[] = $biometricsNumber;
+            $types .= 's';
+        }
+        if ($role) {
+            $updateFields[] = 'role = ?';
+            $params[] = $role;
+            $types .= 's';
+        }
+        if ($dept) {
+            $updateFields[] = 'department = ?';
+            $params[] = $dept;
+            $types .= 's';
+        }
+        if ($position) {
+            $updateFields[] = 'position = ?';
+            $params[] = $position;
+            $types .= 's';
+        }
+        if ($avatar) {
+            $updateFields[] = 'avatar = ?';
+            $params[] = $avatar;
+            $types .= 's';
+        }
+
+        $params[] = $id;
+        $types .= 'i';
+
+        $sql = 'UPDATE users SET ' . implode(', ', $updateFields) . ' WHERE id = ?';
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$params);
         $stmt->execute();
         sendJson(['message' => 'Profile updated']);
         break;
@@ -241,17 +289,17 @@ switch ($action) {
         $data = json_decode(file_get_contents('php://input'), true);
         if (!$data) sendError('Invalid JSON body');
 
-        $username = trim($data['username'] ?? '');
-        if (!$username) sendError('Username is required');
+        $biometricsNumber = trim($data['biometrics_number'] ?? '');
+        if (!$biometricsNumber) sendError('Biometrics number is required');
 
         // Check if user exists
-        $stmt = $conn->prepare('SELECT id, name FROM users WHERE username = ? AND active = 1');
-        $stmt->bind_param('s', $username);
+        $stmt = $conn->prepare('SELECT id, name FROM users WHERE biometrics_number = ? AND active = 1');
+        $stmt->bind_param('s', $biometricsNumber);
         $stmt->execute();
         $user = $stmt->get_result()->fetch_assoc();
-        
+
         if (!$user) {
-            sendError('Username not found or account is inactive', 404);
+            sendError('Biometrics number not found or account is inactive', 404);
         }
 
         // Check if there's already a pending request
@@ -271,17 +319,17 @@ switch ($action) {
              VALUES (?, ?, ?, ?)'
         );
         $status = 'pending';
-        $stmt->bind_param('isss', $user['id'], $username, $user['name'], $status);
-        
+        $stmt->bind_param('isss', $user['id'], $biometricsNumber, $user['name'], $status);
+
         if (!$stmt->execute()) {
             sendError('Failed to create password reset request: ' . $stmt->error, 500);
         }
 
         $requestId = $conn->insert_id;
-        
+
         // Create notification for DIOS users
         require_once 'notification_helpers.php';
-        notifyPasswordResetRequest($conn, $username, $user['name'], $requestId);
+        notifyPasswordResetRequest($conn, $biometricsNumber, $user['name'], $requestId);
 
         sendJson(['message' => 'Password reset request submitted successfully'], 201);
         break;

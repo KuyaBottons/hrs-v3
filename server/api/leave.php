@@ -1,5 +1,6 @@
 <?php
 require_once 'db.php';
+require_once 'cors.php';
 require_once 'notification_helpers.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
